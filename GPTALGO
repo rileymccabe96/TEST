@@ -1,0 +1,69 @@
+import pandas as pd
+import yfinance as yf
+import matplotlib.pyplot as plt
+import backtrader as bt
+
+class EMA_RSI(bt.Strategy):
+    params = (('ema_period', 100),
+              ('rsi_period', 14),
+              ('rsi_low', 5),
+              ('shares', 100))
+
+    def __init__(self):
+        # Calculate the 100 day EMA
+        self.ema = bt.ind.EMA(period=self.params.ema_period)
+
+        # Calculate the RSI
+        delta = self.data.close.diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+        avg_gain = gain.rolling(window=self.params.rsi_period).mean()
+        avg_loss = loss.rolling(window=self.params.rsi_period).mean()
+        rs = avg_gain / avg_loss
+        self.rsi = 100 - (100 / (1 + rs))
+
+        # Initialize variables for tracking trades
+        self.buy_price = None
+        self.shares = 0
+
+    def next(self):
+        # Check if the price crosses above the 100 day EMA
+        if self.data.close[0] > self.ema[0] and self.data.close[-1] < self.ema[-1]:
+            # Buy shares
+            self.buy_price = self.data.close[0]
+            self.shares = self.params.shares
+            self.buy(size=self.shares)
+            print(f"Bought {self.shares} shares at {self.buy_price} on {self.data.datetime.date()}")
+
+        # Check if the RSI drops below the specified low level
+        if self.rsi[0] < self.params.rsi_low:
+            # Sell all shares
+            self.sell(size=self.shares)
+            sell_price = self.data.close[0]
+            profit = (sell_price - self.buy_price) * self.shares
+            print(f"Sold {self.shares} shares at {sell_price} on {self.data.datetime.date()} for a profit of ${profit}")
+            self.shares = 0
+
+if __name__ == '__main__':
+    # Get historical data for Apple
+    apple_data = yf.download('AAPL', start='2020-01-01', end='2022-03-22')
+
+    # Create a backtrader Cerebro engine
+    cerebro = bt.Cerebro()
+
+    # Add the historical data to the engine
+    data = bt.feeds.PandasData(dataname=apple_data)
+    cerebro.adddata(data)
+
+    # Add the EMA_RSI strategy to the engine
+    cerebro.addstrategy(EMA_RSI)
+
+    # Set the initial investment and commission costs
+    cerebro.broker.setcash(10000)
+    cerebro.broker.setcommission(commission=0.001)
+
+    # Run the backtest
+    cerebro.run()
+
+    # Plot the stock price and indicators using matplotlib
+    fig
